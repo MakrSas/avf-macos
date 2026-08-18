@@ -77,7 +77,38 @@ public class MainActivity extends Activity {
         runOnUiThread(() -> status.setText(s));
     }
 
+    private void dumpApi(Class<?> cls) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== ").append(cls.getName()).append(" ===\n");
+        for (java.lang.reflect.Constructor<?> c : cls.getDeclaredConstructors()) {
+            sb.append("  ctor: ").append(c).append("\n");
+        }
+        for (java.lang.reflect.Method m : cls.getDeclaredMethods()) {
+            sb.append("  method: ").append(m).append("\n");
+        }
+        for (Class<?> inner : cls.getDeclaredClasses()) {
+            sb.append("  inner: ").append(inner.getName()).append("\n");
+        }
+        Log.i(TAG, sb.toString());
+    }
+
+    private void dumpAllApis() {
+        try {
+            dumpApi(Class.forName("android.system.virtualmachine.VirtualMachineCustomImageConfig"));
+            dumpApi(Class.forName("android.system.virtualmachine.VirtualMachineCustomImageConfig$Builder"));
+            dumpApi(Class.forName("android.system.virtualmachine.VirtualMachineCustomImageConfig$DisplayConfig"));
+            dumpApi(Class.forName("android.system.virtualmachine.VirtualMachineCustomImageConfig$DisplayConfig$Builder"));
+            dumpApi(Class.forName("android.system.virtualmachine.VirtualMachineCustomImageConfig$GpuConfig"));
+            dumpApi(Class.forName("android.system.virtualmachine.VirtualMachineCustomImageConfig$GpuConfig$Builder"));
+            dumpApi(Class.forName("android.system.virtualmachine.VirtualMachineConfig"));
+            dumpApi(Class.forName("android.system.virtualmachine.VirtualMachineConfig$Builder"));
+        } catch (Throwable t) {
+            Log.e(TAG, "dumpAllApis failed", t);
+        }
+    }
+
     private void startVm() {
+        dumpAllApis();
         try {
             VirtualMachineManager vmm = getSystemService(VirtualMachineManager.class);
             if (vmm == null) {
