@@ -84,9 +84,38 @@
     DT node, only one added `interrupt-map` entry on the existing `pci-host-cam-generic` node.
     This is favorable for Windows: virtio-win drivers target virtio-pci as the primary transport.
 
+## 2026-08-18 (MMU bring-up)
+
+- Implemented identity-mapped MMU (`loader/src/mmu.c`, `mmu_asm.S`): single L1 table, 39-bit VA,
+  4KiB granule, 1GiB block descriptors, indices 0-3 covering the first 4GiB. RAM
+  (0x80000000-0xBFFFFFFF, index 2) mapped Normal write-back cacheable + executable; everything
+  else (UART, GICv3, RTC, watchdog, PCI ECAM/IO/MMIO) mapped Device-nGnRnE, non-executable.
+  Identity map means no VA/PA jump needed on enable.
+- **Confirmed working on real hardware, unblocking the previously-deferred FDT parse:**
+  ```
+  === Hello from AVF bootloader ===
+  CurrentEL      : EL1
+  PC (approx)    : 0x00000000802002d8
+  DTB pointer (x0): 0x0000000080000000
+  DTB in known RAM range: yes
+  MMU             : enabled (identity map, RAM as Normal)
+  DTB valid magic: yes
+  UART source    : found in DTB
+  UART base      : 0x00000000000003f8
+  Memory node    : not found   <- fixed below
+  CPU count      : 1
+  === end of bootloader report ===
+  ```
+- UART address is now discovered dynamically from the DTB (matches the confirmed 0x3f8), not the
+  hardcoded fallback. CPU count correct (1, matches config default).
+- Fixed a small bug found immediately after: `/memory`'s node identifies itself via
+  `device_type = "memory"`, not a `compatible` property, so `fdt_find_memory` needed its own walk
+  rather than reusing the compatible-string search.
+
 ### Next
 - Waiting on user to download a Windows Insider ARM64 ISO.
-- Meanwhile: MMU/page-table bring-up in the loader (needed both to unblock in-guest FDT parsing
-  and as a prerequisite for anything UEFI-like), then start porting/adapting EDK2 (ArmVirtQemu as
-  a reference) to this confirmed hardware map as the `bootloader` payload, targeting a handoff to
-  `bootmgfw.efi` from the eventual Windows ARM64 install media.
+- Meanwhile: start porting/adapting EDK2 (ArmVirtQemu as a reference) to this confirmed hardware
+  map as the `bootloader` payload, targeting a handoff to `bootmgfw.efi` from the eventual
+  Windows ARM64 install media. The MMU groundwork here (identity map, Normal-vs-Device
+  classification) is a direct prerequisite EDK2 will also need, just at a larger scale (need to
+  extend the L1 table / add L2 tables to cover >1GiB of RAM once testing with 4GiB configs).

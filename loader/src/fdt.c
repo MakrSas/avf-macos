@@ -113,9 +113,59 @@ int fdt_find_compatible_reg(const void *dtb, const char *compat,
     return 0;
 }
 
+/* The /memory node identifies itself via "device_type = \"memory\"", not
+ * "compatible" (confirmed from a real DTB dump -- see AVF_HARDWARE.md), so
+ * this needs its own walk rather than reusing fdt_find_compatible_reg. */
 int fdt_find_memory(const void *dtb, uint64_t *base, uint64_t *size)
 {
-    return fdt_find_compatible_reg(dtb, "memory", base, size);
+    const struct fdt_header *h = (const struct fdt_header *)dtb;
+    uint32_t off_struct = fdt_be32(h->off_dt_struct);
+    uint32_t off_strings = fdt_be32(h->off_dt_strings);
+    const uint8_t *p = (const uint8_t *)dtb + off_struct;
+    const uint8_t *end = (const uint8_t *)dtb + off_struct + fdt_be32(h->size_dt_struct);
+
+    int is_memory_node = 0;
+    uint64_t last_reg_addr = 0, last_reg_size = 0;
+    int have_reg = 0;
+
+    while (p < end) {
+        uint32_t tok = fdt_be32(*(const uint32_t *)p);
+        p += 4;
+        if (tok == FDT_BEGIN_NODE) {
+            while (*p) p++;
+            p++;
+            while (((uintptr_t)p) % 4 != 0) p++;
+        } else if (tok == FDT_PROP) {
+            uint32_t len = fdt_be32(*(const uint32_t *)p); p += 4;
+            uint32_t nameoff = fdt_be32(*(const uint32_t *)p); p += 4;
+            const char *pname = strz_at(dtb, off_strings, nameoff);
+            const uint8_t *val = p;
+            if (str_starts_with(pname, "device_type") && str_contains((const char*)val, "memory")) {
+                is_memory_node = 1;
+            }
+            if (str_starts_with(pname, "reg") && len >= 16) {
+                last_reg_addr = rd_be64(val);
+                last_reg_size = rd_be64(val + 8);
+                have_reg = 1;
+            }
+            p += len;
+            while (((uintptr_t)p) % 4 != 0) p++;
+            if (is_memory_node && have_reg) {
+                *base = last_reg_addr;
+                *size = last_reg_size;
+                return 1;
+            }
+        } else if (tok == FDT_END_NODE) {
+            is_memory_node = 0;
+            have_reg = 0;
+        } else if (tok == FDT_NOP) {
+        } else if (tok == FDT_END) {
+            break;
+        } else {
+            break;
+        }
+    }
+    return 0;
 }
 
 int fdt_count_cpus(const void *dtb)
