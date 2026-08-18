@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "fdt.h"
+#include "mmu.h"
 
 /* ns16550a UART registers (byte-addressable, offsets from base). Confirmed
  * from a real DTB dump off this exact AVF bootloader-mode VM: the console
@@ -123,22 +124,25 @@ void loader_main(void *dtb)
     uart_puts("DTB in known RAM range: ");
     uart_puts(dtb_in_ram ? "yes\n" : "no -- skipping FDT parse to avoid fault\n");
 
-    /* KNOWN LIMITATION (see docs/PROGRESS.md): actually walking the FDT
-     * struct here hangs the VM with no further output, even though the
-     * pointer is in-range and the single-word fdt_valid() read of the
-     * magic also appears to hang. Root cause suspected to be that with no
-     * MMU/page tables installed, all memory defaults to Device-nGnRnE type
-     * per the ARMv8 reset state, which architecturally restricts multi-byte
-     * and unaligned accesses -- likely faulting with no vector table
-     * installed to report why. Real fix is to set up an identity-mapped
-     * MMU (or at least reclassify RAM as Normal memory via MAIR/page
-     * attributes) before doing general-purpose struct walks. Deferred
-     * pending that work; the confirmed hardware map from an out-of-band
-     * `vm run --dump-device-tree` capture (docs/AVF_HARDWARE.md) is used
-     * instead of an in-guest parse for now. */
-    (void)dtb_in_ram;
-    (void)fdt_find_compatible_reg;
-    (void)fdt_valid;
+    /* Bring up the MMU (identity map, RAM as Normal cacheable+executable,
+     * everything else as Device-nGnRnE) before doing any general-purpose
+     * struct walk over the DTB. Without this, ARMv8 reset-state defaults
+     * all memory to Device-nGnRnE, which restricts unaligned/multi-word
+     * access patterns a struct walker relies on -- confirmed on real
+     * hardware to hang even a single aligned 4-byte read (see
+     * docs/PROGRESS.md, 2026-08-18 entry). */
+    mmu_init();
+    uart_puts("MMU             : enabled (identity map, RAM as Normal)\n");
+
+    if (dtb_in_ram && fdt_valid(dtb)) {
+        dtb_ok = 1;
+        for (int i = 0; uart_compat_candidates[i]; i++) {
+            if (fdt_find_compatible_reg(dtb, uart_compat_candidates[i], &uart_addr, &uart_size)) {
+                have_uart = 1;
+                break;
+            }
+        }
+    }
 
     if (have_uart) {
         g_uart_base = (volatile uint8_t *)(uintptr_t)uart_addr;
