@@ -98,10 +98,20 @@ crosvm/AVF-specific vCPU stall detector, not a generic watchdog.
 - `avf` node: `secretkeeper_public_key`, and an `untrusted` child with
   `instance-id` — AVF-specific attestation/secretkeeper plumbing, not
   relevant to early boot.
-- No `virtio-mmio` nodes appeared in this particular dump (256 MiB,
-  bootloader-only config, no `disks`/`devices` configured) — TBD whether
-  they appear once a `disks` entry is added to the VM config (see
-  Milestone: probe AVF non-root limits).
+- **Disk transport is virtio-PCI, not virtio-mmio.** Confirmed by adding a
+  `"disks": [{"image": "<path>", "writable": true}]` entry to the VM config
+  (plain path string, not a nested object -- a nested `{"kind":"raw","path":...}`
+  form is rejected by the JSON schema) and diffing the resulting
+  `--dump-device-tree` output against the no-disk baseline: no new DT node
+  appears, only one extra `interrupt-map` entry on the existing
+  `pci-host-cam-generic` node (slot `0x3800`, IRQ pin `0xa`), and crosvm's
+  own stdout logs `Trying to attach block device: /proc/self/fd/N`. This
+  means the disk enumerates as a PCI device at runtime (via ECAM config
+  space, base `0x2e000000` per the `pci` node above), not something
+  discoverable from the DTB alone -- a guest needs a PCI enumerator, not a
+  DT walk, to find it. This is good news for the Windows ARM64 path:
+  virtio-pci is the well-supported, mainline transport for Windows'
+  virtio-win drivers (vs. the much less common virtio-mmio).
 - `/chosen/bootargs = "panic=-1 hostname=VmRun coherent_pool=16384"`,
   `kernel-address`/`kernel-size` under `/config` (0x80200000 / 0x9d8 in this
   dump) — these describe where crosvm loaded the *kernel-mode* payload in

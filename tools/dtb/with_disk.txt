@@ -1,0 +1,131 @@
+magic=0xd00dfeed totalsize=3474 version=17
+NODE / {
+  interrupt-parent = <0x1>
+  compatible = "linux,dummy-virt"
+  #address-cells = <0x2>
+  #size-cells = <0x2>
+  name = "reference"
+  NODE chosen {
+    linux,pci-probe-only = (len=4) 00000001
+    bootargs = "panic=-1 hostname=VmRun coherent_pool=16384"
+    stdout-path = "/U6_16550A@3f8"
+    kaslr-seed = (len=8) 218a99006d8f347d
+    rng-seed = (len=256) 90aa7c5480c1175d3b1f598e161da8b069244e98aa7115665739a9082833ac18
+  }
+  NODE config {
+    kernel-address = (len=4) 80200000
+    kernel-size = (len=4) 000008d4
+  }
+  NODE memory {
+    device_type = "memory"
+    reg = <0x0 0x80000000 0x0 0x10000000>
+  }
+  NODE cpus {
+    #address-cells = <0x1>
+    #size-cells = <0x0>
+    NODE cpu@0 {
+      device_type = "cpu"
+      compatible = "arm,armv8"
+      reg = <0x0>
+      phandle = <0x100>
+    }
+  }
+  NODE intc {
+    compatible = "arm,gic-v3"
+    #interrupt-cells = (len=4) 00000003
+    interrupt-controller = (len=0) 
+    reg = <0x0 0x3fff0000 0x0 0x10000 0x0 0x3ffd0000 0x0 0x20000>
+    phandle = <0x1>
+    #address-cells = <0x2>
+    #size-cells = <0x2>
+    ranges = <>
+    NODE msic {
+      compatible = "arm,gic-v3-its"
+      msi-controller = (len=0) 
+      phandle = <0x3>
+      reg = <0x0 0x40000000 0x0 0x20000>
+    }
+  }
+  NODE __symbols__ {
+    intc = "/intc"
+  }
+  NODE timer {
+    compatible = "arm,armv8-timer"
+    interrupts = <0x1 0xd 0x108 0x1 0xe 0x108 0x1 0xb 0x108 0x1 0xa 0x108>
+    always-on = (len=0) 
+  }
+  NODE U6_16550A@3f8 {
+    compatible = "ns16550a"
+    reg = <0x0 0x3f8 0x0 0x8>
+    clock-frequency = <0x1c2000>
+    interrupts = <0x0 0x0 0x1>
+  }
+  NODE U6_16550A@2f8 {
+    compatible = "ns16550a"
+    reg = <0x0 0x2f8 0x0 0x8>
+    clock-frequency = <0x1c2000>
+    interrupts = <0x0 0x2 0x1>
+  }
+  NODE U6_16550A@3e8 {
+    compatible = "ns16550a"
+    reg = <0x0 0x3e8 0x0 0x8>
+    clock-frequency = <0x1c2000>
+    interrupts = <0x0 0x0 0x1>
+  }
+  NODE U6_16550A@2e8 {
+    compatible = "ns16550a"
+    reg = <0x0 0x2e8 0x0 0x8>
+    clock-frequency = <0x1c2000>
+    interrupts = <0x0 0x2 0x1>
+  }
+  NODE psci {
+    compatible = (len=26) 61726d2c707363692d312e300061726d2c707363692d302e3200
+    method = "hvc"
+  }
+  NODE pci {
+    compatible = "pci-host-cam-generic"
+    device_type = "pci"
+    ranges = <0x2000000 0x0 0x2c000000 0x0 0x2c000000 0x0 0x2000000 0x43000000 0x0 0xd0000000 0x0 0xd0000000 0xff 0x30000000>
+    bus-range = (len=8) 0000000000000000
+    #address-cells = <0x3>
+    #size-cells = <0x2>
+    reg = <0x0 0x2e000000 0x0 0x1000000>
+    #interrupt-cells = (len=4) 00000001
+    interrupt-map = <0x800 0x0 0x0 0x1 0x1 0x0 0x0 0x0 0x4 0x4 0x1000 0x0 0x0 0x1 0x1 0x0 0x0 0x0 0x5 0x4 0x1800 0x0 0x0 0x1 0x1 0x0 0x0 0x0 0x6 0x4 0x2000 0x0 0x0 0x1 0x1 0x0 0x0 0x0 0x7 0x4 0x2800 0x0 0x0 0x1 0x1 0x0 0x0 0x0 0x8 0x4 0x3000 0x0 0x0 0x1 0x1 0x0 0x0 0x0 0x9 0x4 0x3800 0x0 0x0 0x1 0x1 0x0 0x0 0x0 0xa 0x4>
+    interrupt-map-mask = <0xf800 0x0 0x0 0x7>
+    dma-coherent = (len=0) 
+    msi-parent = <0x3>
+  }
+  NODE pclk@3M {
+    #clock-cells = (len=4) 00000000
+    compatible = "fixed-clock"
+    clock-frequency = <0x2fefd8>
+    phandle = <0x18>
+  }
+  NODE rtc@2000 {
+    compatible = "arm,primecell"
+    arm,primecell-periphid = (len=4) 00041030
+    reg = <0x0 0x2000 0x0 0x1000>
+    interrupts = <0x0 0x1 0x4>
+    clocks = (len=4) 00000018
+    clock-names = "apb_pclk"
+  }
+  NODE vmwdt@3000 {
+    compatible = "qemu,vcpu-stall-detector"
+    reg = <0x0 0x3000 0x0 0x1000>
+    clock-frequency = <0x2>
+    timeout-sec = (len=4) 0000000a
+    interrupts = <0x1 0xf 0x101>
+  }
+  NODE cpufreq {
+    compatible = "virtual,kvm-cpufreq"
+  }
+  NODE avf {
+    name = "avf"
+    secretkeeper_public_key = (len=42) a40101032720062158201b4de56c000eafcb2c07f11ced2d3e38e2e784efb964
+    NODE untrusted {
+      defer-rollback-protection = (len=0) 
+      instance-id = (len=64) 0000000000000000000000000000000000000000000000000000000000000000
+    }
+  }
+}
