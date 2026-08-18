@@ -116,7 +116,16 @@ jobs:
           GCC_AARCH64_PREFIX: aarch64-linux-gnu-
         run: |
           source edksetup.sh
-          build -a AARCH64 -t GCC -b RELEASE -p ArmVirtPkg/ArmVirtQemuKernel.dsc
+          # DEBUG, not RELEASE: RELEASE builds compile out DEBUG()-gated
+          # early boot log messages entirely (this is *why* our first
+          # working-per-CI RELEASE firmware still showed empty console on
+          # real hardware even after the serial-driver fix -- confirmed by
+          # comparing against a leftover ~64MB firmware from an earlier,
+          # unrelated manual experiment, consistent with a DEBUG-sized
+          # build, which also showed empty console, i.e. hit the same
+          # PL011-vs-16550 issue we already fixed here). DEBUG output is
+          # what we actually need to see boot progress right now.
+          build -a AARCH64 -t GCC -b DEBUG -p ArmVirtPkg/ArmVirtQemuKernel.dsc
 
       - name: Locate output firmware
         working-directory: edk2
@@ -128,5 +137,5 @@ jobs:
         with:
           name: edk2-armvirt-firmware
           path: |
-            edk2/Build/ArmVirtQemuKernel-AArch64/RELEASE_GCC/FV/QEMU_EFI.fd
-            edk2/Build/ArmVirtQemuKernel-AArch64/RELEASE_GCC/FV/QEMU_VARS.fd
+            edk2/Build/ArmVirtQemuKernel-AArch64/DEBUG_GCC/FV/QEMU_EFI.fd
+            edk2/Build/ArmVirtQemuKernel-AArch64/DEBUG_GCC/FV/QEMU_VARS.fd
