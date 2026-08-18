@@ -69,6 +69,21 @@ jobs:
           sections = text.split("\n[")
           for i, sec in enumerate(sections):
               header_line = sec.split("\n", 1)[0]
+              # Main [LibraryClasses.common]: DXE_CORE (DxeMain.inf) also needs
+              # PlatformHookLib once serial libs change, but NOT a PciExpressLib
+              # override -- the existing BaseCachingPciExpressLib override in
+              # this same section is untouched and must not be duplicated.
+              if not header_line.startswith("LibraryClasses.common]"):
+                  continue
+              sec = re.sub(
+                  r"(SerialPortLib\|MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550\.inf\n)",
+                  r"\1  PlatformHookLib|MdeModulePkg/Library/BasePlatformHookLibNull/BasePlatformHookLibNull.inf\n",
+                  sec,
+                  count=1,
+              )
+              sections[i] = sec
+          for i, sec in enumerate(sections):
+              header_line = sec.split("\n", 1)[0]
               is_early_phase = header_line.startswith(
                   ("LibraryClasses.common.SEC", "LibraryClasses.common.PEI_CORE", "LibraryClasses.common.PEIM")
               )
