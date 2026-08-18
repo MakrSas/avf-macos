@@ -30,6 +30,12 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Diagnose compileOnly classpath
+        working-directory: android-app
+        run: |
+          ls -la app/libs/
+          gradle -q :app:dependencies --configuration compileClasspath --no-daemon | grep -i "framework-virtualization\|jar" | head -20
+
       - name: Build debug APK
         working-directory: android-app
         run: gradle assembleDebug --no-daemon
