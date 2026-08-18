@@ -24,6 +24,31 @@ jobs:
           git clone --depth 1 --recurse-submodules --shallow-submodules \
             https://github.com/tianocore/edk2.git edk2
 
+      - name: Patch serial driver to NS16550A (confirmed real UART, not PL011)
+        working-directory: edk2
+        run: |
+          # ArmVirtPkg defaults to FdtPL011SerialPortLib, which looks for an
+          # "arm,pl011" compatible DTB node -- our confirmed AVF hardware
+          # exposes ns16550a instead (docs/AVF_HARDWARE.md), so that lookup
+          # never finds anything and produces zero console output. Swap in
+          # the stock generic 16550 lib, whose defaults already match our
+          # hardware almost exactly (PcdSerialRegisterBase=0x3F8,
+          # PcdSerialRegisterAccessWidth=8, PcdSerialClockRate=1843200 --
+          # all confirmed from the real DTB dump) -- only PcdSerialUseMmio
+          # needs overriding to TRUE since ARM has no port-IO space.
+          sed -i \
+            's#ArmVirtPkg/Library/FdtPL011SerialPortLib/FdtPL011SerialPortLib.inf#MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf#' \
+            ArmVirtPkg/ArmVirt.dsc.inc
+          sed -i \
+            's#ArmVirtPkg/Library/FdtPL011SerialPortLib/EarlyFdtPL011SerialPortLib.inf#MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf#' \
+            ArmVirtPkg/ArmVirt.dsc.inc
+          sed -i \
+            '/\[PcdsFixedAtBuild.common\]/a\  gEfiMdeModulePkgTokenSpaceGuid.PcdSerialUseMmio|TRUE' \
+            ArmVirtPkg/ArmVirtQemuKernel.dsc
+          echo "--- verifying patch applied ---"
+          grep -n "SerialPortLib" ArmVirtPkg/ArmVirt.dsc.inc
+          grep -n "PcdSerialUseMmio" ArmVirtPkg/ArmVirtQemuKernel.dsc
+
       - name: Build BaseTools
         working-directory: edk2
         run: make -C BaseTools
