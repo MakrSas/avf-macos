@@ -119,3 +119,61 @@
   Windows ARM64 install media. The MMU groundwork here (identity map, Normal-vs-Device
   classification) is a direct prerequisite EDK2 will also need, just at a larger scale (need to
   extend the L1 table / add L2 tables to cover >1GiB of RAM once testing with 4GiB configs).
+
+## 2026-08-18 (EDK2 DEBUG build: still silent)
+
+Switched EDK2 build to DEBUG target (RELEASE strips DEBUG()-gated boot log
+messages, a real and separate issue from the earlier PL011-vs-16550 fix).
+Build succeeded, but on-device console is STILL completely empty -- no
+output at all, not even a single byte, despite DEBUG builds normally
+printing SEC-phase entry banners immediately via DebugLib before almost
+anything else happens.
+
+This means the empty console is not (only) explained by the RELEASE
+stripping theory -- EDK2 is likely failing/hanging even earlier than SEC's
+first DEBUG() call, before our serial fix would even have a chance to run.
+Plausible causes, not yet isolated:
+- MMU/memory-map assumptions in ArmVirtMemoryInitPeiLib or ArmGicLib
+  (redistributor stride calculation, etc.) not matching our confirmed
+  hardware map exactly.
+- SEC-phase PCD access assumptions (FixedAtBuild should work, but worth
+  verifying PcdSerialUseMmio is actually being read as expected that early).
+- Something in the "Kernel" boot-protocol image header handling specific
+  to ArmVirtQemuKernel.dsc that differs from our own hand-rolled loader's
+  entry assumptions.
+
+This is real EDK2 platform bring-up work -- meaningfully harder than the
+from-scratch loader (which is small enough to fully reason about) and not
+yet resolved. Deprioritized in favor of the Android app path (below),
+which is closer to a genuinely new capability (real GPU/display) rather
+than further serial debugging on a firmware whose ultimate payoff (Windows
+boot) is still several unproven steps away regardless.
+
+## 2026-08-18 (Android app: builds successfully)
+
+`android-app/` (Gradle multi-module: `:app` + `:stubs`) now builds a debug
+APK in CI. Key fixes along the way:
+- `android.system.virtualmachine` is not in any compileSdk platform stub
+  jar at any API level tried (35, 36) -- confirmed via
+  `/apex/com.android.virt/etc/classpaths/bootclasspath.pb` on the real
+  Pixel 7 that the `com.android.virt` mainline module puts
+  `framework-virtualization.jar` directly on the device's BOOTCLASSPATH
+  instead, meaning apps get it automatically at runtime with **no**
+  `<uses-sdk-library>` manifest entry needed -- but Gradle/javac has
+  nothing to compile against.
+- Pulling that jar from the device didn't help either: it contains
+  `classes.dex` (ART bytecode), not `.class` files, so it's not readable
+  by javac as a classpath entry regardless of how it's wired in.
+- Fix: `:stubs` module with hand-written stand-in classes (real method
+  signatures sourced from the AOSP `framework-virtualization` README/src,
+  empty bodies) used `compileOnly` from `:app` -- never packaged into the
+  APK. At runtime the actual on-device classes resolve via BOOTCLASSPATH,
+  unaffected by these stubs existing at compile time only.
+
+### Next
+- Install the built APK on-device, grant `MANAGE_VIRTUAL_MACHINE` +
+  `USE_CUSTOM_VIRTUAL_MACHINE` via `adb shell pm grant` (confirmed
+  grantable without root), launch, and see whether `vm.run()` actually
+  succeeds and produces visible output via the SurfaceView -- this directly
+  tests the real display/GPU path that the bare `vm run` CLI structurally
+  cannot provide (see AVF_HARDWARE.md).
