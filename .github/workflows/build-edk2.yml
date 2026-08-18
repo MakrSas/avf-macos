@@ -31,10 +31,10 @@ jobs:
       - name: Build ArmVirtQemuKernel AARCH64
         working-directory: edk2
         env:
-          GCC5_AARCH64_PREFIX: aarch64-linux-gnu-
+          GCC_AARCH64_PREFIX: aarch64-linux-gnu-
         run: |
           source edksetup.sh
-          build -a AARCH64 -t GCC5 -b RELEASE -p ArmVirtPkg/ArmVirtQemuKernel.dsc
+          build -a AARCH64 -t GCC -b RELEASE -p ArmVirtPkg/ArmVirtQemuKernel.dsc
 
       - name: Locate output firmware
         working-directory: edk2
@@ -46,4 +46,4 @@ jobs:
         with:
           name: edk2-armvirt-firmware
           path: |
-            edk2/Build/ArmVirtQemuKernel-AARCH64/RELEASE_GCC5/FV/*.fd
+            edk2/Build/ArmVirtQemuKernel-AARCH64/RELEASE_GCC/FV/*.fd
