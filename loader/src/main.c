@@ -83,32 +83,28 @@ static const char *uart_compat_candidates[] = {
     0
 };
 
+/* Confirmed real hardware layout for this AVF bootloader-mode VM, from an
+ * earlier --dump-device-tree capture (docs/AVF_HARDWARE.md). Used as the
+ * default so we can print diagnostics before risking any dereference of a
+ * possibly-invalid x0/dtb pointer. */
+#define KNOWN_UART_BASE   0x3f8ULL
+#define KNOWN_RAM_BASE    0x80000000ULL
+#define KNOWN_RAM_SIZE    0x10000000ULL
+
 void loader_main(void *dtb)
 {
     uint64_t el = read_current_el();
     uint64_t pc = read_pc();
+    uint64_t dtb_addr = (uint64_t)(uintptr_t)dtb;
     uint64_t uart_addr = 0, uart_size = 0;
     int have_uart = 0;
     int dtb_ok = 0;
+    int dtb_in_ram = (dtb_addr >= KNOWN_RAM_BASE) &&
+                      (dtb_addr < KNOWN_RAM_BASE + KNOWN_RAM_SIZE);
 
-    if (dtb && fdt_valid(dtb)) {
-        dtb_ok = 1;
-        for (int i = 0; uart_compat_candidates[i]; i++) {
-            if (fdt_find_compatible_reg(dtb, uart_compat_candidates[i], &uart_addr, &uart_size)) {
-                have_uart = 1;
-                break;
-            }
-        }
-    }
-
-    if (have_uart) {
-        g_uart_base = (volatile uint8_t *)(uintptr_t)uart_addr;
-    } else {
-        /* Fallback: confirmed real address of the first ns16550a UART
-         * ("U6_16550A@3f8") on this exact AVF bootloader-mode hardware,
-         * used only if DTB parsing failed to find a UART node. */
-        g_uart_base = (volatile uint8_t *)(uintptr_t)0x3f8ULL;
-    }
+    /* Bring up UART with the known-good address first so every subsequent
+     * print is safe, before touching the (possibly bogus) dtb pointer. */
+    g_uart_base = (volatile uint8_t *)(uintptr_t)KNOWN_UART_BASE;
 
     uart_puts("\n=== Hello from AVF bootloader ===\n");
 
@@ -120,9 +116,30 @@ void loader_main(void *dtb)
     uart_put_hex64(pc);
     uart_puts("\n");
 
-    uart_puts("DTB pointer    : ");
-    uart_put_hex64((uint64_t)(uintptr_t)dtb);
+    uart_puts("DTB pointer (x0): ");
+    uart_put_hex64(dtb_addr);
     uart_puts("\n");
+
+    uart_puts("DTB in known RAM range: ");
+    uart_puts(dtb_in_ram ? "yes\n" : "no -- skipping FDT parse to avoid fault\n");
+
+    /* Only dereference dtb if the pointer at least looks plausible: no
+     * exception vector table is installed here, so a bad access would hang
+     * the VM with no diagnostic at all (this is exactly what happened
+     * before this guard was added -- see docs/PROGRESS.md). */
+    if (dtb_in_ram && fdt_valid(dtb)) {
+        dtb_ok = 1;
+        for (int i = 0; uart_compat_candidates[i]; i++) {
+            if (fdt_find_compatible_reg(dtb, uart_compat_candidates[i], &uart_addr, &uart_size)) {
+                have_uart = 1;
+                break;
+            }
+        }
+    }
+
+    if (have_uart) {
+        g_uart_base = (volatile uint8_t *)(uintptr_t)uart_addr;
+    }
 
     uart_puts("DTB valid magic: ");
     uart_puts(dtb_ok ? "yes\n" : "no\n");
