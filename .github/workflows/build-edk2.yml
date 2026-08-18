@@ -1,0 +1,49 @@
+name: build-edk2
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - '.github/workflows/build-edk2.yml'
+      - 'edk2-platform/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            build-essential uuid-dev iasl git python3 python3-pip nasm
+
+      - name: Checkout edk2 (shallow, with submodules)
+        run: |
+          git clone --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/tianocore/edk2.git edk2
+
+      - name: Build BaseTools
+        working-directory: edk2
+        run: make -C BaseTools
+
+      - name: Build ArmVirtQemuKernel AARCH64
+        working-directory: edk2
+        env:
+          GCC5_AARCH64_PREFIX: aarch64-linux-gnu-
+        run: |
+          source edksetup.sh
+          build -a AARCH64 -t GCC5 -b RELEASE -p ArmVirtPkg/ArmVirtQemuKernel.dsc
+
+      - name: Locate output firmware
+        working-directory: edk2
+        run: |
+          find Build -iname '*.fd' -o -iname '*.efi' | tee /tmp/edk2-outputs.txt
+          find Build -iname 'QEMU_EFI*' -exec ls -la {} \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edk2-armvirt-firmware
+          path: |
+            edk2/Build/ArmVirtQemuKernel-AARCH64/RELEASE_GCC5/FV/*.fd
