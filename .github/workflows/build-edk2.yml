@@ -19,10 +19,17 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
             build-essential uuid-dev iasl git python3 python3-pip nasm
 
-      - name: Checkout edk2 (shallow, with submodules)
+      - name: Checkout edk2 (pinned stable tag, with submodules)
+        env:
+          EDK2_TAG: edk2-stable202511
         run: |
-          git clone --depth 1 --recurse-submodules --shallow-submodules \
-            https://github.com/tianocore/edk2.git edk2
+          # Pinned rather than floating `master`: a build that succeeded
+          # against master minutes earlier failed on a re-clone with an
+          # unrelated error (BaseCachingPciExpressLib module-type mismatch)
+          # -- master is actively developed and moved under us. A stable
+          # tag keeps builds reproducible.
+          git clone --depth 1 --branch "$EDK2_TAG" --recurse-submodules \
+            --shallow-submodules https://github.com/tianocore/edk2.git edk2
 
       - name: Patch serial driver to NS16550A (confirmed real UART, not PL011)
         working-directory: edk2
