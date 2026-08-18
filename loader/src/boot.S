@@ -29,7 +29,7 @@ _start:
     b       probe_done
 
 probe_putc:
-    mov     x12, #100000
+    mov     x12, #60000
 probe_wait_bounded:
     ldrb    w10, [x9, #5]
     tst     w10, #0x20
