@@ -266,3 +266,41 @@ entirely the separate, not-yet-isolated EDK2 early-boot silence.
   pipeline.
 - Windows ISO not yet wired into any config (needs the EDK2 firmware
   question resolved first, or a different bootloader entirely).
+
+## 2026-08-18 (EDK2 silence: root cause isolated to MemoryPeim())
+
+Added raw UART checkpoint probes (bypassing SerialPortInitialize/DebugLib
+entirely -- direct `*(volatile UINT8*)0x3f8 = c`) at each step of
+`CEntryPoint`/`PrePiMain` in `ArmVirtPkg/PrePi/PrePi.c`. Captured console
+output on real hardware: **`012345` -- then nothing.**
+
+Checkpoint map:
+```
+0 = CEntryPoint entry
+1 = before ArchInitialize()
+2 = after ArchInitialize()
+3 = after HobConstructor()/PrePeiSetHobList()
+4 = after InvalidateDataCacheRange()
+5 = after ProcessLibraryConstructorList()
+6 = after MemoryPeim() call        <- NEVER REACHED
+7 = after ASSERT_EFI_ERROR(Status) <- NEVER REACHED
+```
+
+**Root cause pinpointed: `MemoryPeim(UefiMemoryBase, FixedPcdGet32(PcdSystemMemoryUefiRegionSize))`
+hangs or crashes**, resolved from `ArmVirtMemoryInitPeiLib` per
+`ArmVirt.dsc.inc`. This function's job is building the initial MMU
+translation table covering system memory + peripherals -- the same kind of
+work our own loader's `mmu.c` does, but ArmVirtPkg's implementation likely
+assumes QEMU virt-board conventional addresses (GIC distributor ~0x8000000,
+etc.) for parts of its virtual memory map that aren't purely DTB-driven,
+which would not match our confirmed AVF hardware map (GICv3 distributor
+0x3fff0000, redistributor 0x3ffd0000 -- see AVF_HARDWARE.md).
+
+This is now a well-defined, scoped problem instead of an unexplained total
+silence: next step is instrumenting *inside* `ArmVirtMemoryInitPeiLib`
+(likely `ArmVirtPkg/Library/ArmVirtMemoryInitPeiLib/`) with the same raw
+UART checkpoint technique to find the exact failing sub-step (GIC
+discovery? PSCI? a hardcoded address range being mapped/faulted on?), or
+directly diffing its virtual memory map table against our confirmed
+hardware map to look for a mismatch by inspection first (cheaper than
+another bisection round).
