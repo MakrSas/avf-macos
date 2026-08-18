@@ -1,0 +1,32 @@
+// Compile-only stub definitions for android.system.virtualmachine.* --
+// this package is delivered by the com.android.virt mainline module
+// directly onto the device's BOOTCLASSPATH (confirmed via
+// /apex/com.android.virt/etc/classpaths/bootclasspath.pb on a real Pixel
+// 7), so it's genuinely present at runtime on any device with AVF, but
+// isn't part of any standard compileSdk platform stub jar. The on-device
+// jar (/apex/com.android.virt/javalib/framework-virtualization.jar) turned
+// out to contain classes.dex (ART bytecode), not .class files, so it can't
+// be used as a javac classpath entry directly either.
+//
+// These are hand-written stubs matching the real public API signatures
+// (from android.googlesource.com/.../libs/framework-virtualization/src/),
+// used compileOnly by :app -- never packaged into the APK. At runtime the
+// real on-device classes resolve instead via the BOOTCLASSPATH, same as
+// any other framework class.
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'android.system.virtualmachine.stubs'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 34
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
