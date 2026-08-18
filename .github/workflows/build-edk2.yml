@@ -46,4 +46,5 @@ jobs:
         with:
           name: edk2-armvirt-firmware
           path: |
-            edk2/Build/ArmVirtQemuKernel-AARCH64/RELEASE_GCC/FV/*.fd
+            edk2/Build/ArmVirtQemuKernel-AArch64/RELEASE_GCC/FV/QEMU_EFI.fd
+            edk2/Build/ArmVirtQemuKernel-AArch64/RELEASE_GCC/FV/QEMU_VARS.fd
