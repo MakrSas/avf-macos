@@ -1,18 +1,20 @@
 #include <stdint.h>
 #include "fdt.h"
 
-/* PL011 UART registers (offsets), used once we know the base address from the DTB. */
-#define UARTDR   0x00
-#define UARTFR   0x18
-#define UARTFR_TXFF (1U << 5)
+/* ns16550a UART registers (byte-addressable, offsets from base). Confirmed
+ * from a real DTB dump off this exact AVF bootloader-mode VM: the console
+ * node is "ns16550a" compatible, not PL011 (see docs/AVF_HARDWARE.md). */
+#define UART_THR 0x00  /* transmit holding register (write) */
+#define UART_LSR 0x05  /* line status register */
+#define UART_LSR_THRE (1U << 5)  /* transmit holding register empty */
 
-static volatile uint32_t *g_uart_base = 0;
+static volatile uint8_t *g_uart_base = 0;
 
 static void uart_putc(char c)
 {
     if (!g_uart_base) return;
-    while (g_uart_base[UARTFR / 4] & UARTFR_TXFF) { }
-    g_uart_base[UARTDR / 4] = (uint32_t)(uint8_t)c;
+    while (!(g_uart_base[UART_LSR] & UART_LSR_THRE)) { }
+    g_uart_base[UART_THR] = (uint8_t)c;
 }
 
 static void uart_puts(const char *s)
@@ -67,10 +69,12 @@ static uint64_t read_pc(void)
     return pc;
 }
 
-/* Candidate UART compatible strings to try, in order, if DTB parsing succeeds. */
+/* Candidate UART compatible strings to try, in order, if DTB parsing succeeds.
+ * Confirmed on real hardware: AVF bootloader-mode VMs use ns16550a, not PL011
+ * (PL011 kept as a secondary candidate in case that ever changes). */
 static const char *uart_compat_candidates[] = {
-    "arm,pl011",
     "ns16550a",
+    "arm,pl011",
     0
 };
 
@@ -93,12 +97,12 @@ void loader_main(void *dtb)
     }
 
     if (have_uart) {
-        g_uart_base = (volatile uint32_t *)(uintptr_t)uart_addr;
+        g_uart_base = (volatile uint8_t *)(uintptr_t)uart_addr;
     } else {
-        /* Fallback: crosvm/QEMU-virt convention PL011 base, used only if DTB
-         * parsing failed to find a UART node. This is a documented fallback,
-         * not a guess presented as fact. */
-        g_uart_base = (volatile uint32_t *)(uintptr_t)0x9000000ULL;
+        /* Fallback: confirmed real address of the first ns16550a UART
+         * ("U6_16550A@3f8") on this exact AVF bootloader-mode hardware,
+         * used only if DTB parsing failed to find a UART node. */
+        g_uart_base = (volatile uint8_t *)(uintptr_t)0x3f8ULL;
     }
 
     uart_puts("\n=== Hello from AVF bootloader ===\n");
@@ -119,10 +123,10 @@ void loader_main(void *dtb)
     uart_puts(dtb_ok ? "yes\n" : "no\n");
 
     uart_puts("UART source    : ");
-    uart_puts(have_uart ? "found in DTB\n" : "fallback guess (0x9000000)\n");
+    uart_puts(have_uart ? "found in DTB\n" : "fallback (0x3f8)\n");
 
     uart_puts("UART base      : ");
-    uart_put_hex64(uart_addr ? uart_addr : 0x9000000ULL);
+    uart_put_hex64(uart_addr ? uart_addr : 0x3f8ULL);
     uart_puts("\n");
 
     if (dtb_ok) {
