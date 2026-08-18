@@ -13,7 +13,12 @@ static volatile uint8_t *g_uart_base = 0;
 static void uart_putc(char c)
 {
     if (!g_uart_base) return;
-    while (!(g_uart_base[UART_LSR] & UART_LSR_THRE)) { }
+    /* Bounded wait, not infinite: on real hardware the THRE bit does not
+     * reliably come back quickly between bytes (see boot.S probe). Write
+     * anyway after the bound rather than risk hanging forever. */
+    for (volatile int i = 0; i < 100000; i++) {
+        if (g_uart_base[UART_LSR] & UART_LSR_THRE) break;
+    }
     g_uart_base[UART_THR] = (uint8_t)c;
 }
 

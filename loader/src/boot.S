@@ -10,29 +10,36 @@ _start:
     /* x0 holds dtb pointer (if crosvm follows Linux boot convention) */
     mov     x19, x0
 
-    /* Isolation probe: write 'A' '\r' '\n' directly to the ns16550a UART at
-     * 0x3f8 before touching x0/DTB at all, to tell apart "UART address/MMIO
-     * write is wrong" from "DTB parsing crashes the VM". Poll LSR bit 5
-     * (THR empty) before each byte, per 16550A protocol. */
+    /* Isolation probe: write 'A' 'B' 'C' '\r' '\n' directly to the ns16550a
+     * UART at 0x3f8 before touching x0/DTB at all. LSR-THRE wait is bounded
+     * (not infinite) since the first byte showed the bit does not reliably
+     * come back quickly -- if it stays clear we just write anyway rather
+     * than hang forever. */
     mov     x9, #0x3f8
-probe_wait1:
+    mov     w11, #'A'
+    bl      probe_putc
+    mov     w11, #'B'
+    bl      probe_putc
+    mov     w11, #'C'
+    bl      probe_putc
+    mov     w11, #'\r'
+    bl      probe_putc
+    mov     w11, #'\n'
+    bl      probe_putc
+    b       probe_done
+
+probe_putc:
+    mov     x12, #100000
+probe_wait_bounded:
     ldrb    w10, [x9, #5]
     tst     w10, #0x20
-    b.eq    probe_wait1
-    mov     w10, #'A'
-    strb    w10, [x9]
-probe_wait2:
-    ldrb    w10, [x9, #5]
-    tst     w10, #0x20
-    b.eq    probe_wait2
-    mov     w10, #'\r'
-    strb    w10, [x9]
-probe_wait3:
-    ldrb    w10, [x9, #5]
-    tst     w10, #0x20
-    b.eq    probe_wait3
-    mov     w10, #'\n'
-    strb    w10, [x9]
+    b.ne    probe_do_write
+    subs    x12, x12, #1
+    b.ne    probe_wait_bounded
+probe_do_write:
+    strb    w11, [x9]
+    ret
+probe_done:
 
     /* set up a small stack, PC-relative so it works regardless of link vs load base */
     adrp    x1, __stack_top
