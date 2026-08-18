@@ -1,0 +1,31 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.avfmacos.vmdisplay'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.avfmacos.vmdisplay"
+        // AVF-for-apps (android.system.virtualmachine as a stable public API,
+        // with display/GPU support in VirtualMachineCustomImageConfig) needs
+        // a recent Android version -- 34 (Android 14) is the conservative
+        // floor; bump if APIs used here turn out to need more.
+        minSdk 34
+        targetSdk 35
+        versionCode 1
+        versionName "0.1"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

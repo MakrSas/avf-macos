@@ -65,38 +65,31 @@ jobs:
               "ArmVirtPkg/Library/FdtPL011SerialPortLib/FdtPL011SerialPortLib.inf",
               "MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf",
           )
+          text = text.replace(
+              "ArmVirtPkg/Library/FdtPL011SerialPortLib/EarlyFdtPL011SerialPortLib.inf",
+              "MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf",
+          )
 
+          # BaseCachingPciExpressLib only supports DXE_DRIVER/UEFI_DRIVER/
+          # UEFI_APPLICATION. Swapping the serial lib makes the build actually
+          # resolve PciExpressLib for phases that never reached it before
+          # (DXE_CORE, SEC, PEI_CORE, PEIM -- discovered one at a time as each
+          # fix exposed the next). Simplest robust fix: replace the single
+          # global declaration with the module-type-generic MdePkg variant
+          # instead of chasing per-section overrides -- correctness over the
+          # caching optimization, which doesn't matter for early bring-up.
+          text = text.replace(
+              "PciExpressLib|OvmfPkg/Library/BaseCachingPciExpressLib/BaseCachingPciExpressLib.inf",
+              "PciExpressLib|MdePkg/Library/BasePciExpressLib/BasePciExpressLib.inf",
+          )
+
+          # BaseSerialPortLib16550 needs PlatformHookLib in every phase that
+          # resolves SerialPortLib (main + SEC + PEI_CORE + PEIM).
           sections = text.split("\n[")
           for i, sec in enumerate(sections):
-              header_line = sec.split("\n", 1)[0]
-              # Main [LibraryClasses.common]: DXE_CORE (DxeMain.inf) also needs
-              # PlatformHookLib once serial libs change, but NOT a PciExpressLib
-              # override -- the existing BaseCachingPciExpressLib override in
-              # this same section is untouched and must not be duplicated.
-              if not header_line.startswith("LibraryClasses.common]"):
-                  continue
               sec = re.sub(
                   r"(SerialPortLib\|MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550\.inf\n)",
                   r"\1  PlatformHookLib|MdeModulePkg/Library/BasePlatformHookLibNull/BasePlatformHookLibNull.inf\n",
-                  sec,
-                  count=1,
-              )
-              sections[i] = sec
-          for i, sec in enumerate(sections):
-              header_line = sec.split("\n", 1)[0]
-              is_early_phase = header_line.startswith(
-                  ("LibraryClasses.common.SEC", "LibraryClasses.common.PEI_CORE", "LibraryClasses.common.PEIM")
-              )
-              if not is_early_phase:
-                  continue
-              sec = sec.replace(
-                  "ArmVirtPkg/Library/FdtPL011SerialPortLib/EarlyFdtPL011SerialPortLib.inf",
-                  "MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf",
-              )
-              sec = re.sub(
-                  r"(SerialPortLib\|MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550\.inf\n)",
-                  r"\1  PlatformHookLib|MdeModulePkg/Library/BasePlatformHookLibNull/BasePlatformHookLibNull.inf\n"
-                  r"  PciExpressLib|MdePkg/Library/BasePciExpressLib/BasePciExpressLib.inf\n",
                   sec,
                   count=1,
               )
