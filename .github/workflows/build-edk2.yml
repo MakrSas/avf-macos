@@ -208,10 +208,9 @@ jobs:
   adr   x2, PcdGet64 (PcdSystemMemorySize)
   bl    FindMemnode
 
-.Lout:
+  .Lout:
   ret    x29
-
-"""
+          """
           assert old_block in text, "DiscoverDramFromDt block not found for replacement"
           text = text.replace(old_block, new_block)
 
