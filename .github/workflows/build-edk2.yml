@@ -32,6 +32,7 @@ jobs:
             --shallow-submodules https://github.com/tianocore/edk2.git edk2
 
       - name: Patch serial driver to NS16550A (confirmed real UART, not PL011)
+        if: false  # TEMP: isolating whether BaseCachingPciExpressLib/SEC error predates this patch
         working-directory: edk2
         run: |
           # ArmVirtPkg defaults to FdtPL011SerialPortLib, which looks for an
