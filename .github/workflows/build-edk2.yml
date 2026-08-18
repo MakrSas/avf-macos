@@ -195,22 +195,23 @@ jobs:
               text = f.read()
 
           old_block = text[text.index("ASM_PFX(DiscoverDramFromDt):"):text.index(".LArm64LinuxMagic:")]
-          new_block = """ASM_PFX(DiscoverDramFromDt):
-  mov   x29, x30            // preserve LR
-
-  //
-  // AVF-PATCHED: skip the ARM64 Linux Image header magic check and PE/COFF
-  // relocation entirely (not needed -- see build workflow comment) and
-  // discover DRAM directly from the DTB pointer already in x28.
-  //
-  mov   x0, x28
-  adr   x1, PcdGet64 (PcdSystemMemoryBase)
-  adr   x2, PcdGet64 (PcdSystemMemorySize)
-  bl    FindMemnode
-
-  .Lout:
-  ret    x29
-          """
+          new_lines = [
+              "ASM_PFX(DiscoverDramFromDt):",
+              "  mov   x29, x30            // preserve LR",
+              "",
+              "  // AVF-PATCHED: skip the ARM64 Linux Image header magic check and",
+              "  // PE/COFF relocation (not needed, see build workflow comment) and",
+              "  // discover DRAM directly from the DTB pointer already in x28.",
+              "  mov   x0, x28",
+              "  adr   x1, PcdGet64 (PcdSystemMemoryBase)",
+              "  adr   x2, PcdGet64 (PcdSystemMemorySize)",
+              "  bl    FindMemnode",
+              "",
+              "  .Lout:",
+              "  ret    x29",
+              "",
+          ]
+          new_block = "\n".join(new_lines)
           assert old_block in text, "DiscoverDramFromDt block not found for replacement"
           text = text.replace(old_block, new_block)
 
