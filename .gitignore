@@ -4,3 +4,4 @@ build/
 *.bin
 !avf/configs/*.json
 .DS_Store
+edk2-build/
