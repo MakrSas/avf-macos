@@ -217,3 +217,52 @@ problem -- runtime access needed this separately).
 - Note hidden_api_policy=1 is a device-wide, non-persistent-across-reboot
   (likely) developer setting -- fine for our own testing, but worth
   remembering this app won't work this way for an end user without it set.
+
+## 2026-08-18 (Android app: no more crash, VM runs clean)
+
+With backend=2d, the crosvm GPU worker panic is gone entirely. Confirmed
+via logcat: `virtmgr` spawns crosvm with the full `--android-display-service`
++ `--gpu=backend=2d,...` args, crosvm creates the KVM hypervisor, and there
+is **no crash/stop event** -- the VM just runs. Screen stays black (expected:
+our EDK2 firmware itself produces no visible output for reasons still
+unresolved -- see the DEBUG-build silence entry above; this is a firmware
+problem, not an app/display-pipeline problem).
+
+**This is the milestone the whole app detour was for: the full chain
+(non-root permissions -> SurfaceView -> hidden-API-gated
+VirtualMachineCustomImageConfig -> virtmgr -> crosvm --android-display-service
++ --gpu) is now proven to work end-to-end without crashing**, on a stock
+Pixel 7 without root. What's left blocking an actually visible boot is
+entirely the separate, not-yet-isolated EDK2 early-boot silence.
+
+### Summary of everything solved to get here
+1. Custom bootloader identity confirmed executing via AVF `vm run`, no root.
+2. Real hardware map extracted via `--dump-device-tree` (GICv3, ns16550a
+   UART @0x3f8, PCI ECAM, PSCI/hvc, RTC, watchdog) -- see AVF_HARDWARE.md.
+3. MMU/identity-map bring-up in our own loader, unblocking safe FDT parsing.
+4. EDK2 (ArmVirtQemuKernel.dsc) built successfully after fixing: GCC5->GCC
+   toolchain rename, PL011->16550 serial swap, cascading PciExpressLib/
+   PlatformHookLib module-type gaps exposed by that swap, DEBUG vs RELEASE
+   DEBUG()-stripping.
+5. Windows ARM64 ISO (`Win11_25H2_Russian_Arm64_v2.iso`, 7.9GB) already on
+   device at `/sdcard/Download/`, not yet wired into any boot attempt.
+6. Discovered GPU/display fundamentally requires an app-hosted VM
+   (`--android-display-service`), not the bare `vm run` CLI -- traced to
+   the real Debian Terminal app's actual crosvm invocation.
+7. Built a minimal Android app (`android-app/`) using the public-but-hidden-
+   API-gated `android.system.virtualmachine.VirtualMachineCustomImageConfig`
+   surface: solved compile-time linking (hand-written `:stubs` module,
+   since the on-device jar is ART bytecode not `.class` files) and
+   runtime linking (`hidden_api_policy=1` via adb, no root) separately.
+   Fixed a crosvm GPU-backend crash (`2d` not `virglrenderer`) by matching
+   the real working Debian VM's exact flags.
+
+### Still open
+- **EDK2 firmware produces zero output** (serial or, now confirmed,
+  display) even after the PL011->16550 fix and DEBUG target -- likely
+  hangs/crashes before reaching either output path, for reasons not yet
+  isolated (see the "EDK2 DEBUG build: still silent" entry). This blocks
+  actually seeing anything boot, independent of the now-working app/GPU
+  pipeline.
+- Windows ISO not yet wired into any config (needs the EDK2 firmware
+  question resolved first, or a different bootloader entirely).
