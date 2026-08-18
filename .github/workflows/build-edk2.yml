@@ -106,6 +106,66 @@ jobs:
           grep -n "SerialPortLib\|PlatformHookLib\|PciExpressLib" ArmVirtPkg/ArmVirt.dsc.inc
           grep -n "PcdSerialUseMmio" ArmVirtPkg/ArmVirtQemuKernel.dsc
 
+      - name: Insert raw UART checkpoints into PrePi.c for isolation
+        working-directory: edk2
+        run: |
+          # PrePi.c's first real serial output (the "UEFI firmware (version...)"
+          # banner) happens AFTER ArchInitialize/HobConstructor/
+          # InvalidateDataCacheRange/ProcessLibraryConstructorList/MemoryPeim --
+          # if any of those crash or hang, there is no possible output even
+          # with a correct serial driver, since SerialPortInitialize() hasn't
+          # run yet either. Insert raw, library-independent UART byte writes
+          # (same technique used successfully to debug our own loader: see
+          # docs/PROGRESS.md) at each checkpoint to find exactly where
+          # execution stops, bypassing SerialPortInitialize/DebugLib entirely.
+          python3 - <<'PYEOF'
+          path = "ArmVirtPkg/PrePi/PrePi.c"
+          with open(path) as f:
+              text = f.read()
+
+          probe_decl = '''
+          #define AVF_PROBE(c) (*(volatile unsigned char *)0x3f8UL = (c))
+          '''
+          text = text.replace(
+              '#include "PrePi.h"',
+              '#include "PrePi.h"\n' + probe_decl,
+              1,
+          )
+
+          checkpoints = [
+              ("  // Initialize the architecture specific bits\n  ArchInitialize ();",
+               "  AVF_PROBE('1');\n  // Initialize the architecture specific bits\n  ArchInitialize ();\n  AVF_PROBE('2');"),
+              ("  PrePeiSetHobList (HobList);",
+               "  PrePeiSetHobList (HobList);\n  AVF_PROBE('3');"),
+              ("  InvalidateDataCacheRange ((VOID *)(UINTN)PcdGet64 (PcdFdBaseAddress), PcdGet32 (PcdFdSize));",
+               "  InvalidateDataCacheRange ((VOID *)(UINTN)PcdGet64 (PcdFdBaseAddress), PcdGet32 (PcdFdSize));\n  AVF_PROBE('4');"),
+              ("  ProcessLibraryConstructorList ();",
+               "  ProcessLibraryConstructorList ();\n  AVF_PROBE('5');"),
+              ("  Status = MemoryPeim (UefiMemoryBase, FixedPcdGet32 (PcdSystemMemoryUefiRegionSize));\n  ASSERT_EFI_ERROR (Status);",
+               "  Status = MemoryPeim (UefiMemoryBase, FixedPcdGet32 (PcdSystemMemoryUefiRegionSize));\n  AVF_PROBE('6');\n  ASSERT_EFI_ERROR (Status);\n  AVF_PROBE('7');"),
+          ]
+          for old, new in checkpoints:
+              if old not in text:
+                  print(f"WARNING: checkpoint anchor not found: {old[:60]!r}")
+              text = text.replace(old, new, 1)
+
+          text = text.replace(
+              "VOID\nCEntryPoint (",
+              "VOID\nCEntryPoint (",
+          )
+          # Earliest possible C-level checkpoint: first line of CEntryPoint.
+          text = text.replace(
+              "  UINT64  StartTimeStamp;\n",
+              "  UINT64  StartTimeStamp;\n\n  AVF_PROBE('0');\n",
+              1,
+          )
+
+          with open(path, "w") as f:
+              f.write(text)
+          print("--- patched PrePi.c ---")
+          print(text[:3000])
+          PYEOF
+
       - name: Build BaseTools
         working-directory: edk2
         run: make -C BaseTools
