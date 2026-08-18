@@ -1,0 +1,5 @@
+{
+  "bootloader": "/data/local/tmp/avf-macos/bootloader.bin",
+  "memory_mib": 256,
+  "platform_version": "~1.0"
+}
