@@ -166,6 +166,61 @@ jobs:
           print(text[:3000])
           PYEOF
 
+      - name: Bypass ARM64-Linux-header magic check that skips DRAM discovery
+        working-directory: edk2
+        run: |
+          # Root cause (found via the checkpoint probes above -- execution
+          # stopped between checkpoint 5 and 6, i.e. inside/before
+          # MemoryPeim()): ModuleEntryPoint.S's DiscoverDramFromDt gates its
+          # entire body -- including the FindMemnode() call that reads
+          # PcdSystemMemoryBase/Size from the DTB -- behind a check for the
+          # ARM64 Linux "Image" header magic ("ARM\x64") at offset 0x38 of
+          # the image-base pointer it receives in x1. Our AVF bootloader
+          # entry (like our own hand-written loader, confirmed working)
+          # doesn't provide that header/convention, so the magic check
+          # fails, the whole DRAM-discovery block is skipped via `bne
+          # .Lout`, PcdSystemMemorySize stays at its default of 0, and
+          # MemoryPeim()'s `ASSERT (PcdGet64 (PcdSystemMemorySize) != 0)`
+          # hangs forever in CpuDeadLoop() -- exactly matching the observed
+          # "012345 then silence".
+          #
+          # Fix: skip the magic check and PE/COFF relocation entirely (the
+          # checkpoint probes already proved code runs correctly without
+          # relocation ever having happened) and call FindMemnode directly
+          # using x28 (the DTB pointer from x0, preserved earlier and
+          # already confirmed valid by our own loader).
+          python3 - <<'PYEOF'
+          path = "ArmVirtPkg/PrePi/ModuleEntryPoint.S"
+          with open(path) as f:
+              text = f.read()
+
+          old_block = text[text.index("ASM_PFX(DiscoverDramFromDt):"):text.index(".LArm64LinuxMagic:")]
+          new_block = """ASM_PFX(DiscoverDramFromDt):
+  mov   x29, x30            // preserve LR
+
+  //
+  // AVF-PATCHED: skip the ARM64 Linux Image header magic check and PE/COFF
+  // relocation entirely (not needed -- see build workflow comment) and
+  // discover DRAM directly from the DTB pointer already in x28.
+  //
+  mov   x0, x28
+  adr   x1, PcdGet64 (PcdSystemMemoryBase)
+  adr   x2, PcdGet64 (PcdSystemMemorySize)
+  bl    FindMemnode
+
+.Lout:
+  ret    x29
+
+"""
+          assert old_block in text, "DiscoverDramFromDt block not found for replacement"
+          text = text.replace(old_block, new_block)
+
+          with open(path, "w") as f:
+              f.write(text)
+          print("--- patched ModuleEntryPoint.S ---")
+          print(text)
+          PYEOF
+
       - name: Build BaseTools
         working-directory: edk2
         run: make -C BaseTools
