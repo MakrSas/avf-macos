@@ -45,6 +45,11 @@ jobs:
           sed -i \
             '/\[PcdsFixedAtBuild.common\]/a\  gEfiMdeModulePkgTokenSpaceGuid.PcdSerialUseMmio|TRUE' \
             ArmVirtPkg/ArmVirtQemuKernel.dsc
+          # BaseSerialPortLib16550 needs PlatformHookLib, which FdtPL011SerialPortLib
+          # never required -- add the stock null implementation.
+          sed -i \
+            's#\(SerialPortLib|MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf\)#\1\n  PlatformHookLib|MdeModulePkg/Library/BasePlatformHookLibNull/BasePlatformHookLibNull.inf#' \
+            ArmVirtPkg/ArmVirt.dsc.inc
           echo "--- verifying patch applied ---"
           grep -n "SerialPortLib" ArmVirtPkg/ArmVirt.dsc.inc
           grep -n "PcdSerialUseMmio" ArmVirtPkg/ArmVirtQemuKernel.dsc
