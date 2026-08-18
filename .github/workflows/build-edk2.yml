@@ -32,7 +32,6 @@ jobs:
             --shallow-submodules https://github.com/tianocore/edk2.git edk2
 
       - name: Patch serial driver to NS16550A (confirmed real UART, not PL011)
-        if: false  # TEMP: isolating whether BaseCachingPciExpressLib/SEC error predates this patch
         working-directory: edk2
         run: |
           # ArmVirtPkg defaults to FdtPL011SerialPortLib, which looks for an
@@ -44,22 +43,59 @@ jobs:
           # PcdSerialRegisterAccessWidth=8, PcdSerialClockRate=1843200 --
           # all confirmed from the real DTB dump) -- only PcdSerialUseMmio
           # needs overriding to TRUE since ARM has no port-IO space.
-          sed -i \
-            's#ArmVirtPkg/Library/FdtPL011SerialPortLib/FdtPL011SerialPortLib.inf#MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf#' \
-            ArmVirtPkg/ArmVirt.dsc.inc
-          sed -i \
-            's#ArmVirtPkg/Library/FdtPL011SerialPortLib/EarlyFdtPL011SerialPortLib.inf#MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf#' \
-            ArmVirtPkg/ArmVirt.dsc.inc
+          #
+          # Uses a small python script rather than sed: the SEC/PEI_CORE/PEIM
+          # section overrides need PlatformHookLib AND a module-type-generic
+          # PciExpressLib (BaseCachingPciExpressLib, used globally in
+          # [LibraryClasses.common], only supports DXE_DRIVER/UEFI_DRIVER/
+          # UEFI_APPLICATION -- confirmed by isolation testing that swapping
+          # serial libs exposes this pre-existing latent gap, since it makes
+          # the build actually resolve PciExpressLib for those phases where
+          # it previously wasn't reached), but the main
+          # [LibraryClasses.common] section must NOT get a second
+          # PciExpressLib override (would conflict with the existing one).
+          python3 - <<'PYEOF'
+          import re
+
+          inc_path = "ArmVirtPkg/ArmVirt.dsc.inc"
+          with open(inc_path) as f:
+              text = f.read()
+
+          text = text.replace(
+              "ArmVirtPkg/Library/FdtPL011SerialPortLib/FdtPL011SerialPortLib.inf",
+              "MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf",
+          )
+
+          sections = text.split("\n[")
+          for i, sec in enumerate(sections):
+              header_line = sec.split("\n", 1)[0]
+              is_early_phase = header_line.startswith(
+                  ("LibraryClasses.common.SEC", "LibraryClasses.common.PEI_CORE", "LibraryClasses.common.PEIM")
+              )
+              if not is_early_phase:
+                  continue
+              sec = sec.replace(
+                  "ArmVirtPkg/Library/FdtPL011SerialPortLib/EarlyFdtPL011SerialPortLib.inf",
+                  "MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf",
+              )
+              sec = re.sub(
+                  r"(SerialPortLib\|MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550\.inf\n)",
+                  r"\1  PlatformHookLib|MdeModulePkg/Library/BasePlatformHookLibNull/BasePlatformHookLibNull.inf\n"
+                  r"  PciExpressLib|MdePkg/Library/BasePciExpressLib/BasePciExpressLib.inf\n",
+                  sec,
+                  count=1,
+              )
+              sections[i] = sec
+
+          text = "\n[".join(sections)
+          with open(inc_path, "w") as f:
+              f.write(text)
+          PYEOF
           sed -i \
             '/\[PcdsFixedAtBuild.common\]/a\  gEfiMdeModulePkgTokenSpaceGuid.PcdSerialUseMmio|TRUE' \
             ArmVirtPkg/ArmVirtQemuKernel.dsc
-          # BaseSerialPortLib16550 needs PlatformHookLib, which FdtPL011SerialPortLib
-          # never required -- add the stock null implementation.
-          sed -i \
-            's#\(SerialPortLib|MdeModulePkg/Library/BaseSerialPortLib16550/BaseSerialPortLib16550.inf\)#\1\n  PlatformHookLib|MdeModulePkg/Library/BasePlatformHookLibNull/BasePlatformHookLibNull.inf#' \
-            ArmVirtPkg/ArmVirt.dsc.inc
           echo "--- verifying patch applied ---"
-          grep -n "SerialPortLib" ArmVirtPkg/ArmVirt.dsc.inc
+          grep -n "SerialPortLib\|PlatformHookLib\|PciExpressLib" ArmVirtPkg/ArmVirt.dsc.inc
           grep -n "PcdSerialUseMmio" ArmVirtPkg/ArmVirtQemuKernel.dsc
 
       - name: Build BaseTools

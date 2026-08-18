@@ -92,6 +92,35 @@ vmwdt@3000: compatible = "qemu,vcpu-stall-detector", reg = <0x0 0x3000 0x0 0x100
 ```
 crosvm/AVF-specific vCPU stall detector, not a generic watchdog.
 
+## Display/GPU: requires an app-hosted VM, not the bare `vm run` CLI
+
+Confirmed by inspecting the real `crosvm` command line of a working graphical
+VM (Debian, launched via the stock `com.android.virtualization.terminal`
+app after enabling it in Developer Options):
+
+```
+--android-display-service=cid:2071
+--gpu=backend=2d,egl=true,gles=true,surfaceless=true,displays=[[mode=windowed[1280,720],dpi=[160,160],refresh-rate=60]]
+```
+
+`--android-display-service=cid:N` is a crosvm flag that binds to an Android
+Binder service the *hosting app* stands up (backed by its own `SurfaceView`)
+-- only `virtmgr` spawned by a real app process can wire this up. This is
+why adding `"gpu"`/`"display"` keys to a `vm run` JSON config (schema
+accepts them, confirmed empirically) does nothing observable: the shell-run
+`vm` CLI has no Surface to hand over, so crosvm never gets
+`--android-display-service` at all, regardless of what's in the config.
+
+**Implication:** a graphical guest (including Windows with visible output)
+needs an actual Android app process hosting a `SurfaceView`/`SurfaceHolder`
+and using the public `android.system.virtualmachine` API
+(`VirtualMachineCustomImageConfig.Builder`, `DisplayConfig`) to create the
+VM -- not the bare `vm run` CLI we've used for headless testing so far.
+`MANAGE_VIRTUAL_MACHINE` and `USE_CUSTOM_VIRTUAL_MACHINE` permissions are
+grantable via plain `adb shell pm grant` (confirmed, no root needed), so
+this is achievable without root -- it just needs a real (if minimal) app,
+not a CLI invocation.
+
 ## Other
 
 - `cpufreq`: `compatible = "virtual,kvm-cpufreq"` — paravirt cpufreq, no reg (MSR/hypercall based presumably).
