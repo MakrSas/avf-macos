@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace 'com.avfmacos.vmdisplay'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.avfmacos.vmdisplay"
@@ -13,7 +13,7 @@ android {
         // a recent Android version -- 34 (Android 14) is the conservative
         // floor; bump if APIs used here turn out to need more.
         minSdk 34
-        targetSdk 35
+        targetSdk 36
         versionCode 1
         versionName "0.1"
     }
