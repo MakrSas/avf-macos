@@ -125,10 +125,14 @@ public class MainActivity extends Activity {
                             .setRefreshRate(60)
                             .build();
 
+            // backend="2d" (not "virglrenderer"/virgl2) matches the exact
+            // crosvm --gpu flags of a confirmed-working graphical VM (the
+            // stock Debian Terminal app) on this device. virglrenderer
+            // crashed crosvm's GPU worker thread with "invalid rutabaga
+            // build parameters" -- see docs/PROGRESS.md.
             VirtualMachineCustomImageConfig.GpuConfig gpuConfig =
                     new VirtualMachineCustomImageConfig.GpuConfig.Builder()
-                            .setBackend("virglrenderer")
-                            .setContextTypes(new String[] {"virgl2"})
+                            .setBackend("2d")
                             .setRendererUseEgl(true)
                             .setRendererUseGles(true)
                             .setRendererUseSurfaceless(true)

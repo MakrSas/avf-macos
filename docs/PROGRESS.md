@@ -177,3 +177,43 @@ APK in CI. Key fixes along the way:
   succeeds and produces visible output via the SurfaceView -- this directly
   tests the real display/GPU path that the bare `vm run` CLI structurally
   cannot provide (see AVF_HARDWARE.md).
+
+## 2026-08-18 (Android app: real progress, GPU backend fix)
+
+Huge milestone: after `adb shell settings put global hidden_api_policy 1`
+(disables Android's hidden-API enforcement for debuggable apps -- no root
+needed), the app's `vm.run()` call actually succeeded end to end:
+permissions, SurfaceView, VirtualMachineManager, custom bootloader config,
+display/gpu config all wired through correctly and virtmgr spawned a real
+crosvm process with `--android-display-service=cid:N` (confirmed via
+logcat `virtmgr` tag showing the exact args).
+
+It then crashed almost immediately:
+```
+crosvm: thread 'v_gpu' panicked at .../virtio/gpu/mod.rs:1687:14:
+Failed to create virtio gpu worker thread: invalid rutabaga build parameters
+```
+Root cause: used `backend=virglrenderer` + `context_types=[virgl2]` in
+GpuConfig, whereas the confirmed-working Debian Terminal VM's actual
+crosvm invocation (inspected earlier via `ps`/`/proc/PID/cmdline`) uses
+`backend=2d` with no context_types at all. Fixed to match.
+
+Also confirmed via runtime reflection dump: the real on-device
+`VirtualMachineCustomImageConfig`/`DisplayConfig`/`GpuConfig` API is
+**hidden-API-blocked** (`domain=platform, api=blocked`) for regular apps
+by default -- this is not a wrong-signature problem, it's Android's
+non-SDK interface enforcement. `hidden_api_policy=1` is the standard,
+non-root, debuggable-app workaround (well known from Android app dev
+tooling) and is what actually unblocked it, not the earlier stub/jar
+compile-time work (which only solved the *compile-time* half of the
+problem -- runtime access needed this separately).
+
+### Next
+- Rebuild with the 2d GPU backend fix, retest -- if crosvm progresses
+  further, check whether it actually reaches our EDK2 firmware (which
+  itself still produces no serial output for reasons not yet isolated --
+  see the DEBUG-build entry above) or produces any visible frame via the
+  SurfaceView regardless of firmware silence.
+- Note hidden_api_policy=1 is a device-wide, non-persistent-across-reboot
+  (likely) developer setting -- fine for our own testing, but worth
+  remembering this app won't work this way for an end user without it set.
