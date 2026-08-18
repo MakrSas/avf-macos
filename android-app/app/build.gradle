@@ -24,8 +24,23 @@ android {
         }
     }
 
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+// android.system.virtualmachine is delivered by the com.android.virt
+// mainline module directly on the device's BOOTCLASSPATH (confirmed via
+// /apex/com.android.virt/etc/classpaths/bootclasspath.pb on a real Pixel 7)
+// -- it needs no <uses-sdk-library> manifest entry and is present at
+// runtime automatically, but isn't part of the standard compileSdk platform
+// stub jars, so javac can't see it without help. app/libs/framework-virtualization.jar
+// was pulled from that same device (`adb pull
+// /apex/com.android.virt/javalib/framework-virtualization.jar`) and is used
+// compileOnly: only for compilation, never packaged into the APK, since the
+// real classes are already present on-device at runtime.
+dependencies {
+    compileOnly files('libs/framework-virtualization.jar')
 }
