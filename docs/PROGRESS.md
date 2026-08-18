@@ -304,3 +304,58 @@ discovery? PSCI? a hardcoded address range being mapped/faulted on?), or
 directly diffing its virtual memory map table against our confirmed
 hardware map to look for a mismatch by inspection first (cheaper than
 another bisection round).
+
+## 2026-08-18 (EDK2: DRAM-discovery fix applied, but still hangs -- likely same MMU-off bug as our own loader)
+
+Fixed the DiscoverDramFromDt patch's real bug (missing temp-stack setup
+before calling the C function FindMemnode -- initial attempt regressed to
+zero probe bytes, fixed by pointing SP at a fixed scratch address in
+confirmed RAM before the call, same idea as the original code's `mov sp,
+x7` before RelocatePeCoffImage, which our patch had dropped along with the
+relocation it was for).
+
+Checkpoint probes are back to `012345` -- still never reaching checkpoint
+6. **Very likely the exact same class of bug this project already solved
+once, in our own loader**: `FindMemnode`'s DTB parsing (`FdtCheckHeader`,
+`FdtGetProp`, etc.) runs with the **MMU still off**, and per ARMv8 reset
+state, all memory defaults to Device-nGnRnE type in that condition --
+which we confirmed on this exact hardware/hypervisor stack hangs even a
+single aligned 4-byte read (see the "Third run" entry in the Milestone-1
+section above: "Even a single aligned 4-byte read of the DTB magic
+hung, despite the pointer being in-range"). EDK2 calls `FindMemnode`
+*before* `MemoryPeim`/MMU init by design (chicken-and-egg: it needs to
+learn the DRAM size before it can build MMU tables covering it) -- this
+presumably works fine on real QEMU (the platform ArmVirtQemuKernel targets)
+but not on AVF's crosvm+pKVM stack specifically, same as our own earlier
+finding.
+
+### Why this matters / what it means
+This isn't a new mystery -- it's the *same* MMU-off DTB-read bug from
+Milestone 1, now hit inside EDK2's own PrePi code instead of our own
+loader's. We already know the fix in principle (bring up a minimal
+identity-mapped MMU before doing DTB reads), we just haven't yet ported
+that fix into EDK2's PrePi flow -- doing so is more involved than our
+loader's case because EDK2 needs the DRAM size *from* the DTB before it
+can decide how large an MMU mapping to build, so it would need either:
+(a) a *temporary* minimal MMU/identity-map good enough to safely read the
+DTB, separate from the "real" one MemoryPeim builds afterward once the
+size is known, mirroring the same base-address-only identity-map trick
+our own loader's `mmu.c` uses (safe even without knowing RAM size, since
+it only needs to identity-map a few GiB starting at the confirmed
+0x80000000 base -- exactly what our loader already does), or
+(b) confirm whether some *other*, non-MMU workaround avoids the
+Device-nGnRnE restriction for this specific access pattern (e.g. issuing
+reads through a path that doesn't trip whatever crosvm/pKVM-specific
+restriction caused the hang -- worth testing narrowly rather than assuming
+(a) is the only option).
+
+### Next
+This is now a well-scoped, well-understood problem (not a mystery) but a
+nontrivial one to fix (needs actual new SEC-phase MMU bring-up code in
+EDK2, analogous to but not identical to our own loader's `mmu.c`/`mmu_asm.S`).
+Good stopping point for this debugging thread pending either more time or
+a decision on whether it's worth pursuing further vs. other paths (e.g.
+whether U-Boot or a different firmware might sidestep this differently,
+or whether patching just enough of ArmVirtMemoryInitPeiLib's MMU-table
+logic to run *before* FindMemnode is more tractable than a fully separate
+temporary MMU).
